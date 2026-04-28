@@ -400,10 +400,13 @@
     </div>
 
     <script>
-        // DATABASE SISWA
-        let students = JSON.parse(localStorage.getItem('db_induk_sdn21')) || [];
+        // PASTE URL APLIKASI WEB GOOGLE APPS SCRIPT ANDA DI SINI
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbyqnHqV0KTGsAUYakOaiOoO1Tgf402AIxMk6ADoLM5CQ2fxn9KwfE0F8-LiPBoivF9RtA/exec';
         
-        // DATABASE PENGATURAN KOP SURAT
+        // DATABASE SISWA KOSONG DI AWAL (KARENA AKAN DIAMBIL DARI INTERNET)
+        let students = [];
+        
+        // DATABASE PENGATURAN KOP SURAT (Tetap lokal karena untuk pengaturan laptop admin)
         let appSettings = JSON.parse(localStorage.getItem('settings_sdn21')) || {
             pemda: "PEMERINTAH KABUPATEN MAROS",
             dinas: "DINAS PENDIDIKAN DAN KEBUDAYAAN",
@@ -415,8 +418,23 @@
         window.onload = () => { 
             initTheme(); 
             loadSettings();
-            renderTable(); 
+            fetchData(); // Fungsi baru untuk ambil data dari Sheet saat aplikasi dibuka
         };
+
+        // FUNGSI BARU: MENGAMBIL DATA DARI GOOGLE SHEETS
+        async function fetchData() {
+            const tbody = document.querySelector('#student-table tbody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">🔄 Mengunduh data dari server...</td></tr>';
+            
+            try {
+                const response = await fetch(GAS_URL);
+                students = await response.json();
+                renderTable(); 
+            } catch (error) {
+                console.error('Gagal memuat data:', error);
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: red;">❌ Gagal terhubung ke database. Periksa koneksi internet.</td></tr>';
+            }
+        }
 
         // MANAJEMEN TEMA
         function initTheme() {
@@ -540,8 +558,14 @@
             });
         }
 
-        function saveStudent(e) {
+        // FUNGSI BARU: MENYIMPAN DATA KE GOOGLE SHEETS
+        async function saveStudent(e) {
             e.preventDefault();
+            
+            const btnSubmit = e.target.querySelector('button[type="submit"]');
+            const originalText = btnSubmit.innerHTML;
+            btnSubmit.innerHTML = "⏳ Menyimpan ke Server...";
+            btnSubmit.disabled = true; // Nonaktifkan tombol sementara agar tidak diklik dua kali
             
             const formInputs = document.querySelectorAll('#student-form input[id^="f_"], #student-form select[id^="f_"]');
             let data = { 
@@ -553,12 +577,26 @@
                 data[input.id] = input.value;
             });
 
-            const idx = students.findIndex(s => s.id == data.id);
-            if(idx > -1) students[idx] = data; else students.push(data);
-            
-            localStorage.setItem('db_induk_sdn21', JSON.stringify(students));
-            alert("✅ Data Siswa Berhasil Disimpan!");
-            showView('home-view'); renderTable();
+            try {
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if(result.status === "success") {
+                    alert("✅ Data Siswa Berhasil Disimpan ke Database Online!");
+                    clearForm();
+                    showView('home-view'); 
+                    fetchData(); // Segarkan ulang tabel untuk melihat data baru
+                }
+            } catch (error) {
+                alert("❌ Terjadi kesalahan jaringan. Data gagal disimpan.");
+                console.error(error);
+            } finally {
+                btnSubmit.innerHTML = originalText;
+                btnSubmit.disabled = false;
+            }
         }
 
         function viewStudent(id) {
