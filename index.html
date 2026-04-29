@@ -97,6 +97,27 @@
             
             .page-break { page-break-before: always; }
         }
+
+        /* --- RESPONSIVE UNTUK HP (MOBILE VIEW) --- */
+        @media (max-width: 768px) {
+            .navbar { flex-direction: column; gap: 10px; text-align: center; }
+            .navbar h1 { font-size: 1.2rem; line-height: 1.3; }
+            .theme-controls { flex-wrap: wrap; justify-content: center; }
+            .navbar button { width: 100%; }
+            
+            .form-grid, .form-grid-3 { grid-template-columns: 1fr; gap: 10px; }
+            
+            #search-input { width: 100% !important; margin-bottom: 10px; }
+            .view-section.card > div:first-child { flex-direction: column; }
+            .view-section.card > div:first-child button { width: 100%; }
+            
+            /* Sembunyikan kolom tabel yang tidak penting di HP */
+            #student-table th:nth-child(4), 
+            #student-table td:nth-child(4) { display: none; }
+            
+            /* Penyesuaian Tombol Aksi di Tabel */
+            #student-table td:last-child { display: flex; flex-direction: column; gap: 5px; }
+        }
     </style>
 </head>
 <body>
@@ -254,22 +275,29 @@
                     <div class="form-group"><label>Diterima di Kelas (Awal Masuk)</label><input type="text" id="f_kelas_masuk" class="form-control" placeholder="Contoh: Kelas 1"></div>
 
                     <div class="form-group full-width photo-area">
-                        <label style="text-align: left; font-size: 1rem;">Pas Foto Siswa *</label>
+                        <label style="text-align: left; font-size: 1rem;">Pas Foto Siswa (3x4) *</label>
+                        
                         <img id="photo-preview-img" class="photo-preview" src="">
                         <input type="hidden" id="photo-data">
                         
-                        <div style="display:flex; gap:10px; justify-content:center; margin-top: 10px;">
+                        <!-- UI KAMERA (Disembunyikan di awal) -->
+                        <div id="camera-container" style="display: none; margin: 10px auto; max-width: 300px;">
+                            <video id="camera-video" autoplay playsinline style="width: 100%; border-radius: 8px; border: 2px solid var(--primary); transform: scaleX(-1);"></video>
+                            <div style="margin-top: 10px; display: flex; gap: 10px; justify-content: center;">
+                                <button type="button" class="btn btn-success" onclick="capturePhoto()">📸 Jepret Foto</button>
+                                <button type="button" class="btn btn-danger" onclick="stopCamera()">✖ Batal</button>
+                            </div>
+                        </div>
+
+                        <!-- TOMBOL PILIHAN FOTO -->
+                        <div id="photo-buttons" style="display:flex; gap:10px; justify-content:center; margin-top: 10px; flex-wrap: wrap;">
                             <input type="file" id="upload-photo" accept="image/*" style="display:none" onchange="handleFileUpload(event)">
-                            <button type="button" class="btn btn-primary" onclick="document.getElementById('upload-photo').click()">📁 Pilih File Foto</button>
+                            <button type="button" class="btn btn-primary" onclick="document.getElementById('upload-photo').click()">📁 Dari Galeri/File</button>
+                            <button type="button" class="btn btn-warning" onclick="startCamera()">📷 Buka Kamera</button>
                         </div>
 
                         <div style="margin-top: 15px; font-size: 0.85rem; color: #334155; text-align: left; background: #e0f2fe; padding: 12px; border-radius: 6px; border: 1px solid #bae6fd;">
-                            <strong style="color: #0284c7;">📌 Syarat & Ketentuan Foto:</strong><br>
-                            <ul style="margin-left: 20px; margin-top: 5px;">
-                                <li><strong>Latar Belakang:</strong> Wajib berwarna <strong>MERAH</strong> polos.</li>
-                                <li><strong>Ukuran/Rasio:</strong> Proporsi <strong>3x4</strong>.</li>
-                                <li><strong>Kapasitas File:</strong> Maksimal <strong>500 KB</strong>.</li>
-                            </ul>
+                            <strong style="color: #0284c7;">📌 Sistem akan mengompres & memotong foto menjadi 3x4 secara otomatis agar ringan di server.</strong>
                         </div>
                     </div>
                 </div>
@@ -684,9 +712,10 @@
         }
 
         function deleteStudent(id) { 
-            if(confirm('Apakah Anda yakin ingin menghapus data murid ini secara permanen?')) { 
+            // Catatan: Fungsi ini saat ini hanya menghapus tampilan di tabel lokal sementara. 
+            // Untuk menghapus permanen dari Google Sheets, diperlukan fungsi tambahan di Apps Script.
+            if(confirm('Apakah Anda yakin ingin menyembunyikan data murid ini?')) { 
                 students = students.filter(s => s.id != id); 
-                localStorage.setItem('db_induk_sdn21', JSON.stringify(students)); 
                 renderTable(); 
             } 
         }
@@ -696,25 +725,109 @@
             document.getElementById('student-id').value = "";
             document.getElementById('photo-preview-img').src = "";
             document.getElementById('photo-data').value = "";
+            stopCamera();
         }
 
+        // ==========================================
+        // FITUR KAMERA & KOMPRESI OTOMATIS (CANVAS)
+        // ==========================================
+        let cameraStream = null;
+
+        // 1. Membuka Kamera
+        async function startCamera() {
+            const video = document.getElementById('camera-video');
+            const container = document.getElementById('camera-container');
+            const btnGroup = document.getElementById('photo-buttons');
+            
+            try {
+                // Mencari kamera depan untuk HP, atau webcam untuk PC
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'user' } 
+                });
+                video.srcObject = cameraStream;
+                container.style.display = 'block';
+                btnGroup.style.display = 'none';
+            } catch (err) {
+                alert("❌ Akses kamera ditolak atau tidak ditemukan di perangkat ini.");
+                console.error(err);
+            }
+        }
+
+        // 2. Menutup Kamera
+        function stopCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
+            document.getElementById('camera-container').style.display = 'none';
+            document.getElementById('photo-buttons').style.display = 'flex';
+        }
+
+        // 3. Menjepret dan Mengompresi dari Kamera
+        function capturePhoto() {
+            const video = document.getElementById('camera-video');
+            processAndCompressImage(video, video.videoWidth, video.videoHeight, true);
+            stopCamera();
+        }
+
+        // 4. Memproses file dari Galeri/Upload
         function handleFileUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
 
-            const maxSize = 500 * 1024; // 500 KB
-            if (file.size > maxSize) {
-                alert("⚠️ UKURAN FOTO TERLALU BESAR!\n\nKapasitas foto Anda: " + (file.size / 1024).toFixed(0) + " KB.\nMaksimal yang diizinkan: 500 KB.\n\nSilakan kompres foto Anda terlebih dahulu.");
-                e.target.value = ""; 
-                return;
-            }
-
             const reader = new FileReader();
-            reader.onload = (event) => { 
-                document.getElementById('photo-data').value = event.target.result;
-                document.getElementById('photo-preview-img').src = event.target.result;
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => processAndCompressImage(img, img.width, img.height, false);
+                img.src = event.target.result;
             };
             reader.readAsDataURL(file);
+        }
+
+        // 5. MESIN UTAMA KOMPRESI (Otomatis potong jadi 3x4 dan perkecil ukuran)
+        function processAndCompressImage(sourceElement, sourceWidth, sourceHeight, isCamera) {
+            const canvas = document.createElement('canvas');
+            // Paksa resolusi maksimal 300x400 (Sangat ringan untuk Base64 di Spreadsheet)
+            const TARGET_WIDTH = 300;
+            const TARGET_HEIGHT = 400;
+            canvas.width = TARGET_WIDTH;
+            canvas.height = TARGET_HEIGHT;
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Rumus Crop Tengah (Center Crop) agar rasio 3x4 tidak gepeng
+            const sourceRatio = sourceWidth / sourceHeight;
+            const targetRatio = TARGET_WIDTH / TARGET_HEIGHT;
+            let drawWidth = TARGET_WIDTH;
+            let drawHeight = TARGET_HEIGHT;
+            let offsetX = 0;
+            let offsetY = 0;
+
+            if (sourceRatio > targetRatio) {
+                // Gambar aslinya lebih lebar
+                drawWidth = sourceHeight * targetRatio;
+                offsetX = (sourceWidth - drawWidth) / 2;
+                drawHeight = sourceHeight;
+            } else {
+                // Gambar aslinya lebih tinggi
+                drawHeight = sourceWidth / targetRatio;
+                offsetY = (sourceHeight - drawHeight) / 2;
+                drawWidth = sourceWidth;
+            }
+
+            // Membalikkan gambar jika dari kamera (efek cermin)
+            if(isCamera) {
+                ctx.translate(TARGET_WIDTH, 0);
+                ctx.scale(-1, 1);
+            }
+
+            // Menggambar gambar yang sudah dipotong dan disesuaikan ukurannya ke Canvas
+            ctx.drawImage(sourceElement, offsetX, offsetY, drawWidth, drawHeight, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+            
+            // CONVERT KE BASE64 (Format JPEG, Kualitas 60%)
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+            
+            document.getElementById('photo-data').value = compressedBase64;
+            document.getElementById('photo-preview-img').src = compressedBase64;
         }
 
         // EXPORT REKAP EXCEL
